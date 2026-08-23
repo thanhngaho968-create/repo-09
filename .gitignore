@@ -1,0 +1,12 @@
+
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+*.log
+temp_downloads/
+models/
+voices/
+cache/
+.DS_Store

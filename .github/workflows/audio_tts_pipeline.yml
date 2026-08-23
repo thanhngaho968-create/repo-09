@@ -1,0 +1,60 @@
+name: Neural Audio Synthesis Pipeline
+
+on:
+  repository_dispatch:
+    types: [audio_tts_event]
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: 'Generic Audio Task ID'
+        required: true
+        default: 'task_au01_001'
+      payload:
+        description: 'Base64 Encoded Audio Payload'
+        required: false
+
+jobs:
+  synthesize-audio:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Audio Dependencies & FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg libsndfile1
+
+      - name: Restore OmniVoice & Voice Cache
+        uses: actions/cache@v4
+        id: model-cache
+        with:
+          path: |
+            models/
+            voices/
+          key: ${{ runner.os }}-omnivoice-models-v1
+
+      - name: Install Python Packages
+        run: |
+          pip install requests soundfile numpy pydub sherpa-onnx google-api-python-client google-auth gspread
+
+      - name: Execute Audiobook Generator
+        env:
+          GDRIVE_SA_BASE64: ${{ secrets.GDRIVE_SA_BASE64 }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          CF_RELAY_URL: ${{ secrets.CF_RELAY_URL }}
+          CF_RELAY_SECRET: ${{ secrets.CF_RELAY_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GSHEET_QUEUE_ID: ${{ secrets.GSHEET_QUEUE_ID }}
+          TASK_ID: ${{ github.event.client_payload.task_id || inputs.task_id }}
+          TASK_PAYLOAD: ${{ github.event.client_payload.payload || inputs.payload }}
+        run: |
+          python3 audio_processor.py
