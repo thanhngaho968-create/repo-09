@@ -1,8 +1,7 @@
-requests
-soundfile
-numpy
-pydub
-sherpa-onnx
-google-api-python-client
-google-auth
-gspread
+google-api-python-client>=2.150.0
+google-auth-httplib2>=0.2.0
+google-auth-oauthlib>=1.2.0
+gspread>=6.2.1
+requests>=2.31.0
+cloudscraper>=1.2.71
+beautifulsoup4>=4.12.3
