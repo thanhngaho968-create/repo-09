@@ -1,0 +1,82 @@
+name: Cloud Media Processing Pipeline
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.client_payload.task_id || inputs.task_id || github.run_id }}
+  cancel-in-progress: false
+
+on:
+  repository_dispatch:
+    types: [media_event]
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: 'Unique Task ID'
+        required: true
+        default: 'task_media_manual'
+      payload:
+        description: 'JSON or Base64 Encoded Task Payload'
+        required: false
+
+jobs:
+  process-media:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11 with Pip Cache
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
+
+      - name: Restore Binary & Tools Cache
+        id: cache-tools
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/bin/yt-dlp
+          key: media-tools-${{ runner.os }}-v2
+          restore-keys: |
+            media-tools-${{ runner.os }}-
+
+      - name: Ensure Media Processing Tools (yt-dlp & ffmpeg)
+        run: |
+          mkdir -p ~/.local/bin
+          export PATH="$HOME/.local/bin:$PATH"
+          if ! command -v yt-dlp &> /dev/null && [ ! -f "$HOME/.local/bin/yt-dlp" ]; then
+            echo "📥 Downloading latest yt-dlp binary..."
+            curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ~/.local/bin/yt-dlp
+            chmod +x ~/.local/bin/yt-dlp
+          fi
+          if ! command -v ffmpeg &> /dev/null; then
+            echo "📥 Installing FFmpeg..."
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ffmpeg
+          fi
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          ~/.local/bin/yt-dlp --version || yt-dlp --version
+          ffmpeg -version | head -n 1
+
+      - name: Install Python Dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Execute Unified Media Processor
+        env:
+          GDRIVE_OAUTH_BASE64: ${{ secrets.GDRIVE_OAUTH_BASE64 }}
+          GDRIVE_SA_BASE64: ${{ secrets.GDRIVE_SA_BASE64 }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          CF_RELAY_URL: ${{ secrets.CF_RELAY_URL }}
+          CF_RELAY_SECRET: ${{ secrets.CF_RELAY_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          GSHEET_QUEUE_ID: ${{ secrets.GSHEET_QUEUE_ID }}
+          TASK_ID: ${{ github.event.client_payload.task_id || inputs.task_id }}
+          TASK_PAYLOAD: ${{ toJSON(github.event.client_payload) || inputs.payload }}
+          RUNNER_REPO: ${{ github.repository }}
+          RUNNER_RUN_ID: ${{ github.run_id }}
+        run: |
+          python3 media_processor.py
